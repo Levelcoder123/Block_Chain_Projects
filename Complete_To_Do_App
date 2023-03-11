@@ -1,0 +1,128 @@
+// SPDX-License-Identifier: GPL-3.0
+
+// Create task -> work, status
+// get task
+// togal task
+// task complete -> reward
+// get reward
+
+pragma solidity >= 0.5.0 < 0.9.0;
+
+contract Todo {
+    struct task {
+        string work;
+        bool status;
+    }
+
+    address owner; // ملکیت
+    uint revenue; // آمدنی
+
+    mapping(address => task[]) taskList;
+    mapping(address => uint) rewardList;
+
+    event taskCreated(uint id, string work, bool status);
+    event taskToggled(uint id, string work, bool status);
+    event taskCompleted(address addr);
+
+
+    error TaskNotExist(uint id);
+    error TaskNotComplete(uint id);
+    error transactionFailed(uint value);
+    error notAnOwner(address addr);
+
+    constructor() {
+        owner = msg.sender;
+    }
+
+    modifier taskExist(uint _id) {
+        if(taskList[msg.sender].length <= _id){
+        revert TaskNotExist(_id);
+        }
+        _;
+    }
+
+    modifier onlyOwner() {
+        if(msg.sender != owner){
+        revert notAnOwner(msg.sender);
+        }
+        _;
+    }
+
+    
+    function createTask(string memory _work) external payable {
+        require(msg.value == 0.1 ether, "pay 0.1 ether");
+        taskList[msg.sender].push(task(_work, false));
+        rewardList[msg.sender] += msg.value;
+
+        emit taskCreated(taskList[msg.sender].length - 1, _work, false);
+    }
+
+    function taskComplete() public {
+        for(uint i = 0; i < taskList[msg.sender].length; i++){
+            if(!taskList[msg.sender][i].status){
+
+            revert TaskNotComplete(i);
+            }
+        }
+
+        uint reward = rewardList[msg.sender];
+        uint charges = reward * 1/100 ;
+
+        (bool sent, bytes memory data) = payable(msg.sender).call{value : reward - charges} ("");
+
+        if(!sent){
+
+        revert transactionFailed(reward - charges);
+        }
+
+        // آمدنی کا حساب کتاب
+        revenue += charges;
+
+        delete taskList[msg.sender];
+        rewardList[msg.sender] = 0;
+
+        emit taskCompleted(msg.sender);
+
+    }
+
+    function getTask() external view returns (task[] memory) {
+
+        return taskList[msg.sender];
+    }
+
+    function togalTask(uint256 _id) external taskExist(_id) {
+
+        taskList[msg.sender][_id].status = !taskList[msg.sender][_id].status;
+        emit taskToggled(_id, taskList[msg.sender][_id].work , taskList[msg.sender][_id].status);
+    }
+
+    function getReward() external view returns (uint) {
+
+        return rewardList[msg.sender];
+    }
+
+    function getRevenue() external view onlyOwner returns (uint) {
+
+        return revenue;
+    }
+
+    function setOwner(address _owner) external onlyOwner {
+
+        owner = _owner;
+    }
+
+    function withDraw() external onlyOwner payable{
+
+    require(revenue > 0, "no funds to withdraw");
+
+    (bool sent, bytes memory data) = payable(owner).call{value : revenue} ("");
+
+    if(!sent) {
+
+        revert transactionFailed(revenue);
+    }
+
+    revenue = 0;
+
+    }
+}
